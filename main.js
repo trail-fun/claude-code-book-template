@@ -94,6 +94,7 @@ const afSettings = {
   centerTrackIdx: 0,
   inPct: 30,           // zoom in when span < inPct% of screen
   outPct: 80,          // zoom out when span > outPct% of screen
+  allowZoom: true,
 };
 
 // ── App state ──────────────────────────────────────────────────
@@ -339,7 +340,7 @@ function addTrack(data, filename) {
     lineWeight:    4,
     trailDuration: 60_000,   // デフォルト1分
     ghostLine: null, activeLine: null, marker: null,
-    cpTimes: null,
+    cpTimes: null, cpTrailMarkers: {},
     _prevElapsed: null, _bubbleUntil: 0, _bubbleCpNum: null,
     _lastCpLabel: '', _cpLabelEl: null,
   };
@@ -368,6 +369,8 @@ function removeTrack(idx) {
   t.ghostLine.remove();
   t.activeLine.remove();
   t.marker.remove();
+  Object.values(t.cpTrailMarkers).forEach(m => m.remove());
+  t.cpTrailMarkers = {};
 
   if (state.tracks.length === 0) {
     state.currentTime = 0;
@@ -405,6 +408,26 @@ function cptToMs(val) {
   const m = val && val.match(/^(\d+):(\d{2}):(\d{2})$/);
   if (!m) return null;
   return (parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3])) * 1000;
+}
+
+function refreshCPTrailMarkers(track) {
+  for (const [num, val] of Object.entries(track.cpTimes || {})) {
+    const cpMs = cptToMs(val);
+    if (cpMs !== null && !track.cpTrailMarkers[num]) {
+      const { lat, lng } = interpolatePosition(track.data.points, track.userStartTime + cpMs);
+      track.cpTrailMarkers[num] = L.circleMarker([lat, lng], {
+        radius: 5, color: '#fff', weight: 2,
+        fillColor: track.color, fillOpacity: 1,
+      }).addTo(map);
+    }
+  }
+  for (const num of Object.keys(track.cpTrailMarkers)) {
+    const val = track.cpTimes?.[num];
+    if (!val || cptToMs(val) === null) {
+      track.cpTrailMarkers[num].remove();
+      delete track.cpTrailMarkers[num];
+    }
+  }
 }
 
 function updateTrackBubble(track, elapsed) {
@@ -590,13 +613,15 @@ function followMap() {
   }
 
   const sz = map.getSize();
-  // ズームは「目標中心から全ポジションが収まるか」で計算
-  const targetZoom = computeFollowZoom(
-    positions, targetLat, targetLng, sz.x, sz.y,
-    afSettings.inPct, afSettings.outPct, state.afZoom
-  );
-
-  state.afZoom = state.afZoom * 0.85 + targetZoom   * 0.15;
+  if (afSettings.allowZoom) {
+    const targetZoom = computeFollowZoom(
+      positions, targetLat, targetLng, sz.x, sz.y,
+      afSettings.inPct, afSettings.outPct, state.afZoom
+    );
+    state.afZoom = state.afZoom * 0.85 + targetZoom * 0.15;
+  } else {
+    state.afZoom = map.getZoom();
+  }
   state.afLat  = state.afLat  * 0.9  + targetLat * 0.1;
   state.afLng  = state.afLng  * 0.9  + targetLng * 0.1;
   map.setView([state.afLat, state.afLng], state.afZoom, { animate: false });
@@ -923,10 +948,10 @@ const btnClearCP   = document.getElementById('btn-clear-cp');
 
 async function handleCPFile(file) {
   const name = file.name.toLowerCase();
-  if (!name.endsWith('.csv') && !name.endsWith('.omap')) return;
+  if (!name.endsWith('.csv') && !name.endsWith('.mcp')) return;
   try {
     const text = await file.text();
-    const cps  = name.endsWith('.omap') ? parseOmap(text) : parseCSV(text);
+    const cps  = name.endsWith('.mcp') ? parseOmap(text) : parseCSV(text);
     loadCPs(cps);
   } catch (err) {
     alert(`CP読み込みエラー: ${err.message}`);
@@ -1621,6 +1646,19 @@ function renderRecordingFrame(ctx, cw, ch, currentTime, cv, bubbleDurationMs) {
       drawPath(covered); ctx.restore();
     }
 
+    // CP通過マーク
+    for (const [, val] of Object.entries(track.cpTimes || {})) {
+      const cpMs = cptToMs(val);
+      if (cpMs === null || cpMs > elapsed) continue;
+      const cpPos = interpolatePosition(track.data.points, track.userStartTime + cpMs);
+      const cp = proj(cpPos.lat, cpPos.lng);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cp.x, cp.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = track.color; ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+    }
+
     const p = proj(lat, lng);
     ctx.save(); ctx.translate(p.x, p.y);
     ctx.shadowBlur = 5; ctx.shadowColor = 'rgba(0,0,0,0.55)';
@@ -1885,13 +1923,21 @@ function updateAfTrackSel() {
 
 function setAfControlsDisabled(disabled) {
   document.querySelectorAll('input[name="af-center"]').forEach(el => el.disabled = disabled);
-  document.getElementById('af-outpct').disabled = disabled;
-  document.getElementById('af-inpct').disabled  = disabled;
+  document.getElementById('af-zoom').disabled = disabled;
+  updateAfZoomControls();
   updateAfTrackSel();
+}
+
+function updateAfZoomControls() {
+  const disabled = !document.getElementById('af-enabled').checked;
+  const allowZoom = document.getElementById('af-zoom').checked;
+  document.getElementById('af-outpct').disabled = disabled || !allowZoom;
+  document.getElementById('af-inpct').disabled  = disabled || !allowZoom;
 }
 
 function openAfDialog() {
   document.getElementById('af-enabled').checked = state.autoFollow;
+  document.getElementById('af-zoom').checked    = afSettings.allowZoom;
   const r = document.querySelector(`input[name="af-center"][value="${afSettings.centerMode}"]`);
   if (r) r.checked = true;
   document.getElementById('af-outpct').value = afSettings.outPct;
@@ -1918,6 +1964,8 @@ btnAutoFollow.addEventListener('click', openAfDialog);
 document.getElementById('af-enabled').addEventListener('change', e => {
   setAfControlsDisabled(!e.target.checked);
 });
+
+document.getElementById('af-zoom').addEventListener('change', updateAfZoomControls);
 
 document.querySelectorAll('input[name="af-center"]').forEach(el => {
   el.addEventListener('change', updateAfTrackSel);
@@ -1952,6 +2000,7 @@ document.getElementById('af-apply').addEventListener('click', () => {
   afSettings.centerTrackIdx  = parseInt(document.getElementById('af-track-sel').value) || 0;
   afSettings.outPct          = parseInt(document.getElementById('af-outpct').value) || 100;
   afSettings.inPct           = parseInt(document.getElementById('af-inpct').value)  || 30;
+  afSettings.allowZoom       = document.getElementById('af-zoom').checked;
   state.autoFollow = nowFollowing;
   if (nowFollowing && !wasFollowing) {
     state.afLat = null; state.afLng = null; state.afZoom = null;
@@ -2000,9 +2049,9 @@ function buildCptBody(trackIdx) {
   grid.className = 'cpt-grid';
 
   // ヘッダー
-  ['CP', '経過時間 (hh:mm:ss)'].forEach(h => {
+  ['CP', '経過時間 (hh:mm:ss)', '緯度・経度（GPX）', '緯度・経度（CP）'].forEach((h, i) => {
     const el = document.createElement('span');
-    el.className = 'cpt-grid-hdr';
+    el.className = 'cpt-grid-hdr' + (i === 2 ? ' cpt-col-gpx' : i === 3 ? ' cpt-col-cp' : '');
     el.textContent = h;
     grid.appendChild(el);
   });
@@ -2023,12 +2072,31 @@ function buildCptBody(trackIdx) {
     inp.value = track.cpTimes[cp.number] ?? '';
     inp.dataset.cpNum = cp.number;
 
+    const latlngInp = document.createElement('input');
+    latlngInp.type = 'text';
+    latlngInp.className = 'cpt-latlng cpt-col-gpx';
+    latlngInp.readOnly = true;
+    latlngInp.placeholder = '緯度,経度';
+
+    function fillLatLng(norm) {
+      const ms = norm ? cptToMs(norm) : null;
+      if (ms !== null) {
+        const pos = interpolatePosition(track.data.points, track.userStartTime + ms);
+        latlngInp.value = `${pos.lat.toFixed(6)},${pos.lng.toFixed(6)}`;
+      } else {
+        latlngInp.value = '';
+      }
+    }
+    fillLatLng(track.cpTimes[cp.number] ?? null);
+
     inp.addEventListener('input', () => {
       inp.classList.remove('cpt-invalid');
       const norm = normalizeCptTime(inp.value);
       if (norm !== null) {
         if (norm === '') delete track.cpTimes[cp.number];
         else track.cpTimes[cp.number] = norm;
+        fillLatLng(norm || null);
+        refreshCPTrailMarkers(track);
       }
     });
 
@@ -2041,14 +2109,52 @@ function buildCptBody(trackIdx) {
         inp.value = norm;
         if (norm === '') delete track.cpTimes[cp.number];
         else track.cpTimes[cp.number] = norm;
+        fillLatLng(norm || null);
+        refreshCPTrailMarkers(track);
       }
     });
 
+    const cpLatlngInp = document.createElement('input');
+    cpLatlngInp.type = 'text';
+    cpLatlngInp.className = 'cpt-latlng cpt-col-cp';
+    cpLatlngInp.readOnly = true;
+    cpLatlngInp.placeholder = '緯度,経度';
+    if (cp.lat != null && cp.lng != null) {
+      cpLatlngInp.value = `${Number(cp.lat).toFixed(6)},${Number(cp.lng).toFixed(6)}`;
+    }
+
     grid.appendChild(inp);
+    grid.appendChild(latlngInp);
+    grid.appendChild(cpLatlngInp);
   }
 
   body.appendChild(grid);
+  applyCptColVisibility();
 }
+
+function applyCptColVisibility() {
+  const showGpx = document.getElementById('cpt-show-gpx').checked;
+  const showCp  = document.getElementById('cpt-show-cp').checked;
+  const grid = document.querySelector('#cpt-body .cpt-grid');
+  if (!grid) return;
+
+  let cols = '2em 78px';
+  if (showGpx) cols += ' 148px';
+  if (showCp)  cols += ' 148px';
+  grid.style.gridTemplateColumns = cols;
+
+  const dlgInner = document.querySelector('#cp-times-dialog .dlg-inner');
+  if (dlgInner) {
+    const extraCols = (showGpx ? 1 : 0) + (showCp ? 1 : 0);
+    dlgInner.style.width = extraCols === 2 ? 'min(480px,98vw)' : extraCols === 1 ? 'min(330px,98vw)' : '';
+  }
+
+  grid.querySelectorAll('.cpt-col-gpx').forEach(el => { el.style.display = showGpx ? '' : 'none'; });
+  grid.querySelectorAll('.cpt-col-cp') .forEach(el => { el.style.display = showCp  ? '' : 'none'; });
+}
+
+document.getElementById('cpt-show-gpx').addEventListener('change', applyCptColVisibility);
+document.getElementById('cpt-show-cp') .addEventListener('change', applyCptColVisibility);
 
 let cptTrackIdx = 0;
 
@@ -2078,6 +2184,76 @@ document.getElementById('cpt-close').addEventListener('click', () => {
   document.getElementById('cp-times-dialog').close();
 });
 
+document.getElementById('cpt-gpx-correct').addEventListener('click', () => {
+  const track = state.tracks[cptTrackIdx];
+  if (!track) return;
+
+  // CPと通過時刻が両方揃っているアンカーを収集（絶対時刻順でソート）
+  const anchors = [];
+  for (const cp of state.cps) {
+    const val = track.cpTimes?.[cp.number];
+    const ms = cptToMs(val);
+    if (ms === null || cp.lat == null || cp.lng == null) continue;
+    anchors.push({
+      absTime: track.userStartTime + ms,
+      lat: Number(cp.lat),
+      lng: Number(cp.lng),
+    });
+  }
+  anchors.sort((a, b) => a.absTime - b.absTime);
+  if (anchors.length < 2) {
+    alert('補正には緯度・経度（CP）が2点以上必要です');
+    return;
+  }
+
+  // 補正前のGPS位置からdeltaを計算（全アンカー分を先に算出）
+  const pts = track.data.points;
+  for (const a of anchors) {
+    const orig = interpolatePosition(pts, a.absTime);
+    a.dLat = a.lat - orig.lat;
+    a.dLng = a.lng - orig.lng;
+  }
+
+  // アンカー間の中間ポイントのみ差分シフトを適用（境界は除外して二重加算を防ぐ）
+  for (let ai = 0; ai < anchors.length - 1; ai++) {
+    const a0 = anchors[ai], a1 = anchors[ai + 1];
+    const dt = a1.absTime - a0.absTime;
+    for (const p of pts) {
+      if (p.time <= a0.absTime || p.time >= a1.absTime) continue; // 境界を除く
+      const r = dt === 0 ? 0.5 : (p.time - a0.absTime) / dt;
+      p.lat += a0.dLat * (1 - r) + a1.dLat * r;
+      p.lng += a0.dLng * (1 - r) + a1.dLng * r;
+    }
+  }
+
+  // 各アンカー時刻にCP座標を持つポイントを強制挿入
+  // → interpolatePosition がアンカー時刻でCP座標と正確に一致するようになる
+  for (const a of anchors) {
+    const existingIdx = pts.findIndex(p => p.time === a.absTime);
+    if (existingIdx >= 0) {
+      pts[existingIdx].lat = a.lat;
+      pts[existingIdx].lng = a.lng;
+    } else {
+      const insertIdx = pts.findIndex(p => p.time > a.absTime);
+      const idx = insertIdx < 0 ? pts.length : insertIdx;
+      pts.splice(idx, 0, { time: a.absTime, lat: a.lat, lng: a.lng });
+    }
+  }
+
+  // ゴーストライン更新
+  track.ghostLine.setLatLngs(pts.map(p => [p.lat, p.lng]));
+
+  // CPトレイルマーカー再配置
+  Object.values(track.cpTrailMarkers).forEach(m => m.remove());
+  track.cpTrailMarkers = {};
+  refreshCPTrailMarkers(track);
+
+  // ダイアログの緯度・経度（GPX）列を再描画
+  buildCptBody(cptTrackIdx);
+
+  alert('GPX軌跡を補正しました');
+});
+
 document.getElementById('cpt-import').addEventListener('click', () => {
   document.getElementById('cpt-file-input').click();
 });
@@ -2104,6 +2280,7 @@ document.getElementById('cpt-file-input').addEventListener('change', e => {
         else { track.cpTimes[cpNum] = norm; imported++; }
       }
       buildCptBody(cptTrackIdx);
+      refreshCPTrailMarkers(track);
       alert(`${imported}件のCP通過時刻を読み込みました`);
     } catch (err) {
       alert('CSVの読み込みに失敗しました: ' + err.message);

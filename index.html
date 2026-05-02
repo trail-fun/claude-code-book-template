@@ -282,8 +282,31 @@
     #cp-times-dialog::backdrop { background: rgba(0,0,0,0.5); }
     #cpt-body { max-height: 55vh; overflow-y: auto; margin-top: 6px; }
     .cpt-grid {
-      display: grid; grid-template-columns: 3em 1fr;
-      gap: 6px 10px; align-items: center;
+      display: grid; grid-template-columns: 2em 78px;
+      gap: 6px 8px; align-items: center;
+    }
+    .cpt-col-toggles { display: flex; gap: 14px; margin: 4px 0 8px; }
+    .cpt-toggle-label {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: #aaa; cursor: pointer; user-select: none;
+    }
+    .cpt-toggle-label input[type="checkbox"] { display: none; }
+    .cpt-toggle-sw {
+      flex-shrink: 0; width: 28px; height: 16px;
+      background: #3a3a6a; border-radius: 8px; position: relative;
+      transition: background .2s;
+    }
+    .cpt-toggle-sw::after {
+      content: ''; position: absolute;
+      width: 12px; height: 12px; background: #fff; border-radius: 50%;
+      top: 2px; left: 2px; transition: left .2s;
+    }
+    .cpt-toggle-label input:checked + .cpt-toggle-sw { background: #4a7ab5; }
+    .cpt-toggle-label input:checked + .cpt-toggle-sw::after { left: 14px; }
+    .cpt-latlng {
+      background: #1a1a30; border: 1px solid #2e2e50; border-radius: 6px;
+      color: #9ab4d4; padding: 5px 8px; font-size: 11px;
+      font-family: monospace; width: 100%; box-sizing: border-box;
     }
     .cpt-grid-hdr { font-size: 11px; color: #888; padding-bottom: 2px; }
     .cpt-grid-sep { grid-column: 1/-1; border-top: 1px solid #3a3a6a; margin: 2px 0; }
@@ -476,9 +499,9 @@
 
         <div id="cp-dropzone">
           <span class="icon">📍</span>
-          CPデータ(.omap / .csv)をドロップ<br>またはクリックして選択
+          CPデータ(.mcp / .csv)をドロップ<br>またはクリックして選択
         </div>
-        <input type="file" id="cp-file-input" accept=".csv,.omap">
+        <input type="file" id="cp-file-input" accept=".csv,.mcp">
 
         <div id="cp-status">
           <span id="cp-count"></span>
@@ -665,6 +688,11 @@
         <select id="af-track-sel" class="dlg-select" style="margin-top:5px"></select>
       </div>
 
+      <label class="dlg-label" style="flex-direction:row;align-items:center;gap:10px">
+        拡大縮小
+        <input type="checkbox" id="af-zoom" checked style="width:18px;height:18px;cursor:pointer;accent-color:#7eb8f7">
+      </label>
+
       <label class="dlg-label">縮小条件
         <span class="dlg-hint">このサイズを超えたら縮小（10〜100%）</span>
         <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
@@ -696,10 +724,21 @@
       <label class="dlg-label">競技者
         <select id="cpt-track-sel" class="dlg-select"></select>
       </label>
+      <div class="cpt-col-toggles">
+        <label class="cpt-toggle-label">
+          <input type="checkbox" id="cpt-show-gpx">
+          <span class="cpt-toggle-sw"></span>緯度・経度（GPX）
+        </label>
+        <label class="cpt-toggle-label">
+          <input type="checkbox" id="cpt-show-cp">
+          <span class="cpt-toggle-sw"></span>緯度・経度（CP）
+        </label>
+      </div>
       <div id="cpt-body"></div>
       <div class="dlg-row" style="margin-top:8px">
-        <button class="dlg-btn secondary" id="cpt-import">CSVから読み込み</button>
+        <button class="dlg-btn secondary" id="cpt-import">データ読込</button>
         <input type="file" id="cpt-file-input" accept=".csv" style="display:none">
+        <button class="dlg-btn secondary" id="cpt-gpx-correct">軌跡補正</button>
         <button class="dlg-btn secondary" id="cpt-close">閉じる</button>
       </div>
     </div>
