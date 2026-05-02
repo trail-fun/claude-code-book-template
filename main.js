@@ -1810,8 +1810,9 @@ async function exportVideo(speed, fps) {
     t._recLastCpLabel = '';
   });
 
+  const bitrate  = parseInt(document.getElementById('rec-bitrate').value);
   const stream   = recCanvas.captureStream(fps);
-  const recorder = new MediaRecorder(stream, { mimeType: fmt.mime });
+  const recorder = new MediaRecorder(stream, { mimeType: fmt.mime, videoBitsPerSecond: bitrate });
   const chunks   = [];
 
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
@@ -2256,6 +2257,106 @@ document.getElementById('cpt-gpx-correct').addEventListener('click', () => {
 
 document.getElementById('cpt-import').addEventListener('click', () => {
   document.getElementById('cpt-file-input').click();
+});
+
+document.getElementById('cpt-lc-import').addEventListener('click', () => {
+  document.getElementById('lc-file-input').click();
+});
+
+document.getElementById('lc-close').addEventListener('click', () => {
+  document.getElementById('lc-dialog').close();
+  openCpTimesDialog(cptTrackIdx);
+});
+
+
+let lcRunners = [];
+
+function parseLcHtml(html) {
+  const nameMatches   = [...html.matchAll(/runnerData\['runnerName'\]\s*=\s*'([^']*)'/g)];
+  const elapsedMatches = [...html.matchAll(/runnerData\['elapsedTime'\]\s*=\s*\[([^\]]*)\]/g)];
+  return nameMatches.map((m, i) => ({
+    name: m[1],
+    elapsedTime: elapsedMatches[i]
+      ? [...elapsedMatches[i][1].matchAll(/'([^']*)'/g)].map(t => t[1])
+      : [],
+  }));
+}
+
+function buildLcResult(runners) {
+  const div = document.getElementById('lc-result');
+  div.innerHTML = '';
+  if (runners.length === 0) {
+    div.textContent = 'データが見つかりません';
+    div.classList.add('has-data');
+    return;
+  }
+  runners.forEach((runner, i) => {
+    const label = document.createElement('label');
+    label.className = 'lc-runner-label';
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'lc-runner';
+    radio.value = i;
+    if (i === 0) radio.checked = true;
+    label.appendChild(radio);
+    label.append(runner.name);
+    div.appendChild(label);
+  });
+  div.classList.add('has-data');
+}
+
+// LapCenterの経過時間('mm:ss' or 'h:mm:ss')をhh:mm:ssに変換
+function lcElapsedToHms(val) {
+  const parts = val.split(':');
+  if (parts.length === 2) {
+    const mm = parseInt(parts[0]), ss = parseInt(parts[1]);
+    return `${String(Math.floor(mm / 60)).padStart(2,'0')}:${String(mm % 60).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+  }
+  if (parts.length === 3) {
+    return parts.map(p => String(parseInt(p)).padStart(2,'0')).join(':');
+  }
+  return null;
+}
+
+document.getElementById('lc-read').addEventListener('click', () => {
+  const selected = document.querySelector('input[name="lc-runner"]:checked');
+  if (!selected) return;
+
+  const runner = lcRunners[parseInt(selected.value)];
+  if (!runner) return;
+
+  const normalCps = state.cps
+    .filter(cp => {
+      const n = String(cp.number).toUpperCase();
+      return cp.type !== 'start' && n !== 'S';
+    })
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const track = state.tracks[cptTrackIdx];
+  if (!track.cpTimes) track.cpTimes = {};
+
+  runner.elapsedTime.forEach((t, i) => {
+    if (i >= normalCps.length) return;
+    const hms = lcElapsedToHms(t);
+    if (hms) track.cpTimes[normalCps[i].number] = hms;
+  });
+
+  document.getElementById('lc-dialog').close();
+  openCpTimesDialog(cptTrackIdx);
+});
+
+document.getElementById('lc-file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    lcRunners = parseLcHtml(ev.target.result);
+    buildLcResult(lcRunners);
+    document.getElementById('cp-times-dialog').close();
+    document.getElementById('lc-dialog').showModal();
+  };
+  reader.readAsText(file, 'utf-8');
 });
 
 document.getElementById('cpt-file-input').addEventListener('change', e => {
