@@ -526,15 +526,27 @@ export default function MapEditor({ state, setState, onNext }) {
         <div className="map-area">
           <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
           {mapZoom !== null && (
-            <div style={{
-              position: 'absolute', bottom: 32, left: 8, zIndex: 10,
-              background: 'rgba(0,0,0,0.55)', color: '#fff',
-              fontSize: 11, padding: '2px 7px', borderRadius: 4,
-              fontFamily: 'monospace', pointerEvents: 'none',
-            }}>
+            <div className="map-zoom-badge">
               zoom: {mapZoom.toFixed(2)}
             </div>
           )}
+          {/* モバイル用ツールバー */}
+          <div className="map-toolbar">
+            {['start', 'cp', 'finish'].map(t => {
+              const single = t === 'start' || t === 'finish'
+              const disabled = single && state.cps.some(c => c.type === t)
+              return (
+                <button key={t}
+                  className={`map-tool-btn${activeTool === t ? ' active' : ''}`}
+                  disabled={disabled}
+                  onClick={() => !disabled && setActiveTool(at => at === t ? null : t)}>
+                  {CP_SYMBOL[t]}{t === 'start' ? 'ST' : t === 'finish' ? 'FN' : 'CP'}
+                </button>
+              )
+            })}
+            <button className="map-tool-btn" disabled={!canUndo} onClick={undo}>↩</button>
+            <button className="map-tool-btn map-tool-primary" onClick={onNext}>出力→</button>
+          </div>
         </div>
 
         {/* サイドパネル */}
@@ -581,7 +593,7 @@ export default function MapEditor({ state, setState, onNext }) {
             </div>
 
             {/* CP追加 */}
-            <div>
+            <div className="side-cp-section">
               <div className="sec-title">CP追加</div>
               <div className="cp-toolbar">
                 {['start', 'cp', 'finish'].map(t => {
