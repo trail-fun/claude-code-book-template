@@ -616,7 +616,12 @@ export default function MapEditor({ state, setState, onNext }) {
                   地図をクリックして {CP_LABEL[activeTool]} を配置
                 </div>
               )}
-              <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            </div>
+
+            {/* データ読込 */}
+            <div>
+              <div className="sec-title">データ読込</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <input type="file" accept=".csv" ref={fileRef} style={{ display: 'none' }}
                   onChange={handleCsvImport} />
                 <button className="btn btn-secondary btn-sm"
@@ -630,7 +635,7 @@ export default function MapEditor({ state, setState, onNext }) {
                       geoJsonFileRef.current.click()
                     }
                   }}>📂 GeoJSON読込</button>
-                <button className="btn btn-secondary btn-sm"
+                <button className="btn btn-secondary btn-sm side-cp-section"
                   disabled={!canUndo}
                   onClick={undo}
                   title="Ctrl+Z">↩ Undo</button>
