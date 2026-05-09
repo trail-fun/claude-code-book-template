@@ -32,6 +32,9 @@ export default function MapEditor({ state, setState, onNext }) {
   const [dragOverIndex, setDragOverIndex] = useState(null)
   const dragIndexRef = useRef(null)
   const fileRef = useRef(null)
+  const loupeRef = useRef(null)
+  const loupeDivRef = useRef(null)
+  const loupeMapDivRef = useRef(null)
   const geoJsonFileRef = useRef(null)
   // Undo 履歴
   const cpsHistoryRef = useRef([])
@@ -178,9 +181,30 @@ export default function MapEditor({ state, setState, onNext }) {
     })
 
     mapRef.current = map
+
+    // ルーペ用ミニマップ初期化（opacity:0 で不可視だがサイズあり → MapLibre が正しく初期化できる）
+    const lmap = new maplibregl.Map({
+      container: loupeMapDivRef.current,
+      style: {
+        version: 8,
+        sources: { gsi: { type: 'raster', tiles: [GSI_TILES[stateRef.current.mapType || 'std']], tileSize: 256, maxzoom: 18 } },
+        layers: [{ id: 'gsi', type: 'raster', source: 'gsi' }],
+      },
+      center: state.printCenter ? [state.printCenter.lng, state.printCenter.lat] : [136.0, 36.0],
+      zoom: 18,
+      interactive: false,
+      fadeDuration: 0,
+      attributionControl: false,
+    })
+    loupeRef.current = lmap
+
     const ro = new ResizeObserver(() => map.resize())
     ro.observe(mapContainer.current)
-    return () => { ro.disconnect(); map.remove(); mapRef.current = null }
+    return () => {
+      ro.disconnect()
+      map.remove(); mapRef.current = null
+      lmap.remove(); loupeRef.current = null
+    }
   }, [])
 
   // activeTool を stateRef に同期
@@ -193,6 +217,8 @@ export default function MapEditor({ state, setState, onNext }) {
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return
     map.getSource('gsi').setTiles([GSI_TILES[state.mapType]])
+    const lm = loupeRef.current
+    if (lm?.isStyleLoaded()) lm.getSource('gsi').setTiles([GSI_TILES[state.mapType]])
   }, [state.mapType])
 
   // 印刷範囲枠の更新
@@ -323,7 +349,15 @@ export default function MapEditor({ state, setState, onNext }) {
         const marker = new maplibregl.Marker({ element: el, draggable: true })
           .setLngLat([cp.lng, cp.lat])
           .addTo(map)
+        marker.on('dragstart', () => {
+          if (loupeDivRef.current) loupeDivRef.current.classList.add('active')
+          loupeRef.current?.jumpTo({ center: marker.getLngLat() })
+        })
+        marker.on('drag', () => {
+          loupeRef.current?.jumpTo({ center: marker.getLngLat() })
+        })
         marker.on('dragend', () => {
+          if (loupeDivRef.current) loupeDivRef.current.classList.remove('active')
           const { lng, lat } = marker.getLngLat()
           setState(s => ({ ...s, cps: s.cps.map(c => c.id === cp.id ? { ...c, lng, lat } : c) }))
         })
@@ -479,6 +513,11 @@ export default function MapEditor({ state, setState, onNext }) {
       </div>
 
       <div className="editor-layout">
+        {/* ルーペ：CPドラッグ中に表示される拡大鏡 */}
+        <div ref={loupeDivRef} className="loupe-wrap">
+          <div ref={loupeMapDivRef} className="loupe-map" />
+          <div className="loupe-cross" />
+        </div>
         <div className={`panel-backdrop${panelOpen ? ' open' : ''}`} onClick={() => setPanelOpen(false)} />
         <button className="panel-toggle" onClick={() => setPanelOpen(o => !o)}>
           {panelOpen ? '✕ 閉じる' : '☰ 設定'}
