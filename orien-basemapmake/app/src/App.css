@@ -19,7 +19,7 @@ body { font-family: sans-serif; background: #f5f5f5; }
 
 .panel-toggle {
   display: none;
-  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  position: absolute; top: 10px; left: 10px; z-index: 1000;
   background: #1a3a5c; color: #fff; border: none; border-radius: 6px;
   padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,.35);
