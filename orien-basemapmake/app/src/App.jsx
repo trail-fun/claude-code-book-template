@@ -7,7 +7,7 @@ export default function App() {
   const [screen, setScreen] = useState('editor')
   const [state, setState] = useState({
     mapType: 'std',
-    paperSize: 'A3',
+    paperSize: 'A4',
     orientation: 'portrait',
     scale: 10000,
     printCenter: null,   // { lng, lat }

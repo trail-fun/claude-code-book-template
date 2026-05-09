@@ -22,7 +22,7 @@ export default function MapEditor({ state, setState, onNext }) {
   const draggingCornerRef = useRef(-1)
   const lineRef = useRef(false)
   const markerClickedRef = useRef(false)
-  const [activeTool, setActiveTool] = useState(null)
+  const [activeTool, setActiveTool] = useState('start')
   const [editingCp, setEditingCp] = useState(null)
   const [panelOpen, setPanelOpen] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
@@ -176,8 +176,9 @@ export default function MapEditor({ state, setState, onNext }) {
       const tool = stateRef.current._activeTool
       if (!tool) return
       addCpRef.current(e.lngLat.lng, e.lngLat.lat, tool)
-      // CP は連続配置、スタート・フィニッシュは1回で解除
-      if (tool !== 'cp') setActiveTool(null)
+      // スタート配置後はCP追加へ、フィニッシュ配置後は解除、CPは連続配置
+      if (tool === 'start') setActiveTool('cp')
+      else if (tool !== 'cp') setActiveTool(null)
     })
 
     mapRef.current = map
