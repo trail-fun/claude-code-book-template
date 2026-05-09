@@ -139,6 +139,32 @@ export function parseGeoJSON(text) {
   return { scale, paperSize, orientation, memo, cps: renumberCps(cps), printCenter }
 }
 
+// ストレートコースの距離を計算（m単位）
+// start → straight/both CP（number順）→ finish の直線距離合計
+export function calcStraightDistance(cps) {
+  const start  = cps.find(c => c.type === 'start')
+  const finish = cps.find(c => c.type === 'finish')
+  const middle = cps
+    .filter(c => c.type === 'cp' && (c.usage === 'straight' || c.usage === 'both'))
+    .sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
+  const ordered = [...(start ? [start] : []), ...middle, ...(finish ? [finish] : [])]
+  if (ordered.length < 2) return null
+  let total = 0
+  for (let i = 0; i < ordered.length - 1; i++) {
+    total += haversineM(ordered[i].lat, ordered[i].lng, ordered[i+1].lat, ordered[i+1].lng)
+  }
+  return total
+}
+
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat/2)**2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 // CSV インポート
 export function parseCsv(text) {
   const lines = text.trim().split('\n').filter(l => l.trim() && !l.startsWith('type'))

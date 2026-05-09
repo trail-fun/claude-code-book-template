@@ -5,6 +5,7 @@ import CpEditor from './CpEditor'
 import {
   SCALES, scaleLabel, scaleWarning, printBounds,
   CP_SYMBOL, CP_LABEL, USAGE_LABEL, renumberCps, parseCsv, parseGeoJSON, PAPER_SIZES,
+  calcStraightDistance,
 } from '../utils'
 
 const GSI_TILES = {
@@ -722,6 +723,23 @@ export default function MapEditor({ state, setState, onNext }) {
                 ))}
               </div>
             </div>
+
+            {/* コース情報 */}
+            {(() => {
+              const distM = calcStraightDistance(state.cps)
+              if (distM === null) return null
+              const distStr = distM >= 1000
+                ? `${(distM / 1000).toFixed(2)} km`
+                : `${Math.round(distM)} m`
+              return (
+                <div>
+                  <div className="sec-title">コース情報</div>
+                  <div style={{ fontSize: 12, color: '#333', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span>ストレート距離: <strong>{distStr}</strong></span>
+                  </div>
+                </div>
+              )
+            })()}
 
           </div>
 
