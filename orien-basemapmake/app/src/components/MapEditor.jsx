@@ -846,14 +846,7 @@ function createSymbolSvg(type, size) {
 
 function createCornerHandle() {
   const el = document.createElement('div')
-  el.style.cssText = `
-    width: 7px; height: 7px; cursor: grab;
-    background: rgba(255,255,255,0.9);
-    border: 2px solid #ff6600;
-    border-radius: 2px;
-    box-shadow: 0 1px 4px rgba(0,0,0,.35);
-    user-select: none;
-  `
+  el.className = 'corner-handle'
   el.title = 'ドラッグして印刷枠を移動'
   return el
 }
