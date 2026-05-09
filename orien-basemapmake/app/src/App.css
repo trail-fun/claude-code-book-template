@@ -52,6 +52,7 @@ body { font-family: sans-serif; background: #f5f5f5; }
 .ctrl-select, .ctrl-input {
   flex: 1; background: #f8f8f8; border: 1px solid #ccc;
   border-radius: 5px; padding: 5px 8px; font-size: 12px; cursor: pointer;
+  color: #333;
 }
 .ctrl-select:focus, .ctrl-input:focus { outline: none; border-color: #1a3a5c; }
 .ctrl-input { cursor: text; }
@@ -73,7 +74,7 @@ body { font-family: sans-serif; background: #f5f5f5; }
 .cp-toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
 .cp-tool-btn {
   padding: 5px 10px; border-radius: 5px; border: 1px solid #ccc;
-  cursor: pointer; font-size: 13px; background: #f8f8f8; transition: background .15s;
+  cursor: pointer; font-size: 13px; background: #f8f8f8; color: #333; transition: background .15s;
 }
 .cp-tool-btn.active, .cp-tool-btn:hover { background: #1a3a5c; color: #fff; border-color: #1a3a5c; }
 
@@ -96,6 +97,18 @@ body { font-family: sans-serif; background: #f5f5f5; }
 }
 .cp-drag-handle:active { cursor: grabbing; }
 .cp-item.drag-over { border-color: #c0392b; background: #fdf0ee; }
+
+.cp-move-btns { display: none; flex-direction: column; gap: 1px; flex-shrink: 0; }
+.cp-move-btn {
+  padding: 0 5px; font-size: 10px; line-height: 1.6;
+  background: #e0e0e0; border: none; border-radius: 3px; cursor: pointer; color: #333;
+}
+.cp-move-btn:disabled { opacity: .3; cursor: default; }
+
+@media (max-width: 768px) {
+  .cp-drag-handle { display: none; }
+  .cp-move-btns { display: flex; }
+}
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.4);

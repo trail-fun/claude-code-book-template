@@ -417,6 +417,16 @@ export default function MapEditor({ state, setState, onNext }) {
     setSelectedId(null)
   }
 
+  const moveCp = (index, dir) => {
+    setState(s => {
+      const arr = [...s.cps]
+      const to = index + dir
+      if (to < 0 || to >= arr.length) return s
+      ;[arr[index], arr[to]] = [arr[to], arr[index]]
+      return { ...s, cps: renumberCps(arr) }
+    })
+  }
+
   const openEdit = (cp) => setEditingCp({ ...cp })
 
   const saveEdit = (edited) => {
@@ -639,6 +649,12 @@ export default function MapEditor({ state, setState, onNext }) {
                     {cp.usage && <span className="cp-meta">{USAGE_LABEL[cp.usage]}</span>}
                     {cp.score && <span className="cp-meta">{cp.score}pt</span>}
                     {cp.memo && <span className="cp-meta cp-memo-preview">{cp.memo.length > 8 ? cp.memo.slice(0, 8) + '…' : cp.memo}</span>}
+                    <div className="cp-move-btns">
+                      <button className="cp-move-btn" disabled={index === 0}
+                        onClick={ev => { ev.stopPropagation(); moveCp(index, -1) }}>▲</button>
+                      <button className="cp-move-btn" disabled={index === state.cps.length - 1}
+                        onClick={ev => { ev.stopPropagation(); moveCp(index, 1) }}>▼</button>
+                    </div>
                     <div className="cp-actions">
                       <button className="btn btn-secondary btn-sm"
                         onClick={ev => { ev.stopPropagation(); openEdit(cp) }}>編集</button>
