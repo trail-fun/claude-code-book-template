@@ -1,0 +1,6 @@
+data/
+cache/
+output/
+venv/
+app/node_modules/
+app/dist/
