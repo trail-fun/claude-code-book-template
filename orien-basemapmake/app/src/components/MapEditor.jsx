@@ -37,6 +37,10 @@ export default function MapEditor({ state, setState, onNext }) {
   const loupeDivRef = useRef(null)
   const loupeMapDivRef = useRef(null)
   const geoJsonFileRef = useRef(null)
+  const gpxFileRef = useRef(null)
+  const gpxTracksRef = useRef([])   // [{ coords: [[lng,lat],...], times: [str|null,...] }]
+  const gpxPopupRef = useRef(null)
+  const [gpxFiles, setGpxFiles] = useState([])
   // Undo 履歴
   const cpsHistoryRef = useRef([])
   const prevCpsRef = useRef(state.cps)
@@ -118,6 +122,34 @@ export default function MapEditor({ state, setState, onNext }) {
       map.addLayer({ id: 'straight-line', type: 'line', source: 'straight-line',
         paint: { 'line-color': '#c0392b', 'line-width': 2, 'line-opacity': 0.45 } })
       lineRef.current = true
+
+      // GPX トラック
+      map.addSource('gpx-tracks', { type: 'geojson', data: emptyGeoJson() })
+      map.addLayer({ id: 'gpx-line', type: 'line', source: 'gpx-tracks',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#3a6bc4', 'line-width': 1.5, 'line-opacity': 0.5 } })
+
+      map.on('click', 'gpx-line', (e) => {
+        markerClickedRef.current = true
+        setTimeout(() => { markerClickedRef.current = false }, 0)
+
+        const { lng, lat } = e.lngLat
+        let nearestTime = null
+        let nearestDist = Infinity
+        for (const trk of gpxTracksRef.current) {
+          trk.coords.forEach(([tLng, tLat], i) => {
+            const d = (tLng - lng) ** 2 + (tLat - lat) ** 2
+            if (d < nearestDist) { nearestDist = d; nearestTime = trk.times[i] }
+          })
+        }
+        if (gpxPopupRef.current) gpxPopupRef.current.remove()
+        gpxPopupRef.current = new maplibregl.Popup({ closeButton: true, maxWidth: '220px' })
+          .setLngLat(e.lngLat)
+          .setHTML(`<div style="font-size:13px;padding:2px 0">${nearestTime ? formatGpxTime(nearestTime) : '時刻データなし'}</div>`)
+          .addTo(map)
+      })
+      map.on('mouseenter', 'gpx-line', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'gpx-line', () => { map.getCanvas().style.cursor = '' })
 
       // printCenter が未設定のときだけ地図中心で初期化
       const initCenter = state.printCenter ?? (() => {
@@ -505,6 +537,44 @@ export default function MapEditor({ state, setState, onNext }) {
     e.target.value = ''
   }
 
+  const handleGpxImport = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const tracks = parseGPX(ev.target.result)
+        if (tracks.every(t => t.coords.length === 0)) {
+          alert('GPXファイルにトラックポイントが見つかりませんでした。')
+          return
+        }
+        gpxTracksRef.current = [...gpxTracksRef.current, ...tracks]
+        setGpxFiles(f => [...f, file.name])
+        const map = mapRef.current
+        if (map?.getSource('gpx-tracks')) {
+          map.getSource('gpx-tracks').setData({
+            type: 'FeatureCollection',
+            features: gpxTracksRef.current.map(t => ({
+              type: 'Feature', properties: {},
+              geometry: { type: 'LineString', coordinates: t.coords },
+            })),
+          })
+        }
+      } catch {
+        alert('GPXファイルの読み込みに失敗しました。')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  const clearGpx = () => {
+    gpxTracksRef.current = []
+    setGpxFiles([])
+    if (gpxPopupRef.current) { gpxPopupRef.current.remove(); gpxPopupRef.current = null }
+    mapRef.current?.getSource('gpx-tracks')?.setData(emptyGeoJson())
+  }
+
   const warn = scaleWarning(state.scale)
 
   return (
@@ -641,7 +711,20 @@ export default function MapEditor({ state, setState, onNext }) {
                   disabled={!canUndo}
                   onClick={undo}
                   title="Ctrl+Z">↩ Undo</button>
+                <input type="file" accept=".gpx" ref={gpxFileRef} style={{ display: 'none' }}
+                  onChange={handleGpxImport} />
+                <button className="btn btn-secondary btn-sm"
+                  onClick={() => gpxFileRef.current.click()}>🏃 GPX読込</button>
+                {gpxFiles.length > 0 && (
+                  <button className="btn btn-danger btn-sm"
+                    onClick={clearGpx}>✕ GPXクリア</button>
+                )}
               </div>
+              {gpxFiles.length > 0 && (
+                <div style={{ fontSize: 11, color: '#aaa', marginTop: 4 }}>
+                  {gpxFiles.map((f, i) => <div key={i}>📍 {f}</div>)}
+                </div>
+              )}
             </div>
 
             {/* 表示オプション */}
@@ -782,6 +865,36 @@ function boundsToGeoJson({ north, south, east, west }) {
       },
     }],
   }
+}
+
+// ---- GPX ヘルパー ----
+function parseGPX(text) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml')
+  const tracks = []
+  doc.querySelectorAll('trk').forEach(trk => {
+    trk.querySelectorAll('trkseg').forEach(seg => {
+      const coords = [], times = []
+      seg.querySelectorAll('trkpt').forEach(pt => {
+        const lat = parseFloat(pt.getAttribute('lat'))
+        const lon = parseFloat(pt.getAttribute('lon'))
+        if (isNaN(lat) || isNaN(lon)) return
+        const timeEl = pt.querySelector('time')
+        coords.push([lon, lat])
+        times.push(timeEl ? timeEl.textContent.trim() : null)
+      })
+      if (coords.length > 0) tracks.push({ coords, times })
+    })
+  })
+  return tracks
+}
+
+function formatGpxTime(iso) {
+  try {
+    return new Date(iso).toLocaleString('ja-JP', {
+      month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    })
+  } catch { return iso }
 }
 
 function cpMarkerLabel(cp, state) {
